@@ -19,14 +19,25 @@ button{border:0;border-radius:14px;padding:10px 18px;font-size:1rem;font-weight:
 #start{background:var(--accent)}#cancel{background:var(--accent2)}
 button:disabled{opacity:.4;cursor:not-allowed}
 #clock{font-size:1.7rem;font-weight:800;min-width:90px;text-align:center;background:var(--head);border-radius:14px;padding:4px 12px;font-variant-numeric:tabular-nums}
-main{max-width:760px;margin:0 auto;background:var(--card);border-radius:22px;padding:12px;box-shadow:0 4px 14px #8e7cf022}
-#grid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px}
+main{display:flex;gap:12px;align-items:flex-start;max-width:900px;margin:0 auto;background:var(--card);border-radius:22px;padding:12px;box-shadow:0 4px 14px #8e7cf022}
+#grid{flex:1;min-width:0;display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px}
 .h{background:var(--head);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;aspect-ratio:1;font-size:clamp(.7rem,2.6vw,1.1rem)}
 .h.corner{background:var(--accent);color:#fff}
 input.c{width:100%;aspect-ratio:1;min-width:0;border:2px solid var(--line);border-radius:8px;text-align:center;font-size:clamp(.7rem,2.6vw,1.1rem);font-family:inherit;color:var(--text);background:var(--bg);padding:0}
 input.c:disabled{opacity:.7}
 input.c:focus{outline:none;border-color:var(--accent);background:var(--card)}
 input.c.ok{background:var(--ok)}input.c.bad{background:var(--bad)}
+#pad{display:none;position:sticky;top:12px;width:170px;grid-template-columns:repeat(3,1fr);gap:8px}
+main.run #pad{display:grid}
+#pad button{padding:0;height:54px;font-size:1.4rem;background:var(--head);color:var(--text);border-radius:14px;touch-action:manipulation}
+#pad button:active{background:var(--accent);color:#fff}
+#pad .del{background:var(--bad)}#pad .ent{background:var(--accent);color:#fff}
+@media (max-width:640px){
+ body{padding-bottom:150px}
+ main{display:block}
+ #pad{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;z-index:9;background:var(--card);padding:10px 10px calc(10px + env(safe-area-inset-bottom,0px));grid-template-columns:repeat(6,1fr);box-shadow:0 -4px 14px #8e7cf033}
+ #pad button{height:48px}
+}
 #result{max-width:760px;margin:14px auto 0;background:var(--card);border-radius:22px;padding:14px 18px;text-align:center;box-shadow:0 4px 14px #8e7cf022}
 #score{font-size:2rem;font-weight:800;color:var(--accent)}
 </style>
@@ -42,36 +53,50 @@ input.c.ok{background:var(--ok)}input.c.bad{background:var(--bad)}
     <div id="clock">00:00</div>
   </div>
 </header>
-<main><div id="grid"></div></main>
+<main id="main"><div id="grid"></div><div id="pad" aria-label="Teclado numérico"></div></main>
 <section id="result"><div>Puntuación</div><div id="score">– / 144</div><div id="msg">¡Completa la tabla de multiplicar!</div></section>
 <script>
-const grid=document.getElementById('grid'),cells=[];
+const grid=document.getElementById('grid'),cells=[];let cur=null;
 const $=id=>document.getElementById(id);
 function mk(t,c){const d=document.createElement('div');d.className='h '+(c||'');d.textContent=t;grid.appendChild(d)}
 mk('×','corner');for(let c=1;c<=12;c++)mk(c);
 for(let r=1;r<=12;r++){mk(r);for(let c=1;c<=12;c++){
-  const i=document.createElement('input');i.className='c';i.disabled=true;i.inputMode='numeric';i.maxLength=3;
+  const i=document.createElement('input');i.className='c';i.disabled=true;i.inputMode='none';i.addEventListener('focus',()=>{cur=i});i.maxLength=3;
   i.dataset.a=r*c;i.setAttribute('aria-label',r+' por '+c);
   i.addEventListener('input',()=>{i.value=i.value.replace(/\D/g,'')});
   i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const n=cells[cells.indexOf(i)+1];n&&n.focus()}});
   grid.appendChild(i);cells.push(i)}}
+const pad=$('pad');
+[1,2,3,4,5,6,7,8,9,'⌫',0,'⏎'].forEach(k=>{
+  const b=document.createElement('button');b.textContent=k;b.type='button';
+  b.className=k==='⌫'?'del':k==='⏎'?'ent':'';
+  b.setAttribute('aria-label',k==='⌫'?'Borrar':k==='⏎'?'Siguiente':k);
+  b.addEventListener('pointerdown',e=>e.preventDefault());
+  b.addEventListener('click',()=>{
+    if(state!=='running')return;
+    if(!cur)cur=cells[0];
+    if(k==='⌫')cur.value=cur.value.slice(0,-1);
+    else if(k==='⏎'){const n=cells[cells.indexOf(cur)+1];if(n){n.focus({preventScroll:false})}}
+    else if(cur.value.length<3)cur.value+=k;
+    if(k!=='⏎')cur.focus({preventScroll:true})});
+  pad.appendChild(b)});
 let timer=null,end=0,state='idle';
 const fmt=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 function tick(){const left=Math.max(0,Math.ceil((end-Date.now())/1000));$('clock').textContent=fmt(left);if(left<=0)finish()}
 $('start').onclick=()=>{
   const m=parseFloat($('mins').value);if(!(m>0)){alert('Introduce un tiempo válido en minutos.');return}
   state='running';end=Date.now()+m*60000;
-  cells.forEach(c=>{c.disabled=false});cells[0].focus();
+  cells.forEach(c=>{c.disabled=false});$('main').classList.add('run');cells[0].focus();
   $('start').disabled=true;$('mins').disabled=true;$('cancel').disabled=false;$('cancel').textContent='Cancelar';
   $('msg').textContent='¡Tú puedes! ⏳';tick();timer=setInterval(tick,250)};
 function finish(){
-  clearInterval(timer);state='done';let ok=0;
+  clearInterval(timer);state='done';$('main').classList.remove('run');cur=null;let ok=0;
   cells.forEach(c=>{c.disabled=true;const good=c.value!==''&&+c.value===+c.dataset.a;c.classList.add(good?'ok':'bad');if(good)ok++});
   $('score').textContent=ok+' / 144';
   $('msg').textContent=ok===144?'¡Perfecto! 🏆':ok>=100?'¡Muy bien! 🌟':ok>=50?'¡Buen trabajo, sigue practicando! 💪':'¡Sigue practicando, cada vez saldrá mejor! 🌱';
   $('cancel').textContent='Reiniciar';$('cancel').disabled=false}
 function reset(){
-  clearInterval(timer);state='idle';
+  clearInterval(timer);state='idle';$('main').classList.remove('run');cur=null;
   cells.forEach(c=>{c.value='';c.disabled=true;c.classList.remove('ok','bad')});
   $('start').disabled=false;$('mins').disabled=false;$('cancel').disabled=true;$('cancel').textContent='Cancelar';
   $('clock').textContent='00:00';$('score').textContent='– / 144';$('msg').textContent='¡Completa la tabla de multiplicar!'}
